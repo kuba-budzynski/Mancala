@@ -1,44 +1,79 @@
-import algorithms.Algo
-import algorithms.Minimax
-import algorithms.MinimaxWithAlphaBeta
-import controllers.GameController
-import game.Board
-import game.GameRules
-import heuristics.BoardValue
+
+import engine.algorithms.Minimax
+import engine.algorithms.MinimaxWithAlphaBeta
+import engine.controllers.GameController
+import engine.controllers.Silent
+import engine.excel.Results
+import engine.game.*
+import engine.heuristics.BoardValue
+import engine.heuristics.BonusMoves
+import engine.heuristics.Steals
+import engine.heuristics.combo.BoardState
 import mu.KotlinLogging
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
-import player.AI
-import player.ConsolePlayer
-import kotlin.math.roundToInt
-import kotlin.system.measureTimeMillis
+import engine.player.AI
+import engine.player.ConsolePlayer
+import engine.player.Moves
+import engine.player.Player
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 
 val logger = KotlinLogging.logger{}
 val modules =  module{
     single { GameRules() }
+    single { Settings() }
+    single { Moves() }
+    single { Results() }
 }
 
 fun main(){
-    logger.info { "App has been started" }
+
+    logger.debug { "App has been started" }
     startKoin{
         modules(modules)
     }
+    val gr = GameSettings()
+    gr.settings.heuristic = BoardState()
 
-    val board = Board()
-    val heuristic = BoardValue()
-    val algo: Algo = Minimax(heuristic)
-//    val algo: Algo = MinimaxWithAlphaBeta(heuristic)
+    val depth1 = 6
+    val algo1 = MinimaxWithAlphaBeta(depth1)
 
-    val player1 = ConsolePlayer(heuristic, algo)
-//    val player2 = ConsolePlayer(heuristic, algo)
+    val depth2 = 6
+    val algo2 = MinimaxWithAlphaBeta(depth2)
 
-//    val player1 = AI(heuristic, algo)
-    val player2 = AI(heuristic, algo)
+    val player1 = AI(algo1)
+    val player2 = AI(algo2)
 
-    val game = GameController(player1, player2)
-    val time = measureTimeMillis {
-        game.play(board)
+//    Generate statistics for n-games
+
+    val n = 20
+    for(i in 1..n){
+        val board = Board()
+        val game = GameController(player1, player2, notifier = Silent(), verbose = false)
+
+        val stats = game.play(board)
+        gr.excel.addStat(stats)
+        println(stats)
+        logger.info {
+            "Test ${gr.gameRules.playerMax + i + gr.gameRules.reset}/${n} \t Time: ${stats.toSeconds(stats.totalTime)} s"
+        }
     }
-    println("TIME: ${((time / 1000.0) * 100).roundToInt() /100.0} s")
-    logger.info { "FINAL SCORE: ${board.score()}" }
+
+    gr.excel.generateResults(
+            listOf(
+                Triple(depth1, algo1.name(), gr.settings.heuristic.name()),
+                Triple(depth2, algo2.name(), gr.settings.heuristic.name())
+            )
+    )
+    logger.debug { "Excel file has been generated" }
+
+//    val game = GameController(player1, player2)
+//    game.play(Board())
+}
+
+class GameSettings: KoinComponent{
+    val settings by inject<Settings>()
+    val excel by inject<Results>()
+    val gameRules by inject<GameRules>()
 }
